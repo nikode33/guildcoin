@@ -28,7 +28,8 @@ def make_tx(tid, vout, sign, value, rpk, locktime="00000000"):
                 outx += to_hex(value[j].to_bytes(8, 'little')) + rpk[j]
             intx += txid + to_hex(vout[i].to_bytes(1, 'little')) + sign[i]
         except ecdsa.BadSignatureError:
-            return 1
+            print("Bad Signature Error 100")
+            return 100
     return version + to_hex(len(tid).to_bytes(1, 'big')) + intx + to_hex(len(value).to_bytes(1, 'big')) + outx + locktime
 
 def make_coinbase_tx(rpk, value, depth, message, locktime="00000000"):
@@ -81,28 +82,21 @@ def generate_header(block, pbh, target, nonce):
     bits = bytes.hex(ex.to_bytes(1, 'big')) + target[(64-ex)-6:(64-ex)]
     return "10000000" + pbh + get_merkle_root(block) + to_hex(int(time.time()).to_bytes(4, 'big')) + bits + to_hex(nonce.to_bytes(4, 'big'))
 
-def chop_block():
-    pass
+def pubkeygen(s):
+    return ecdsa.VerifyingKey.from_string(bytearray.fromhex(s), curve=ecdsa.SECP256k1)
 
+def json_to_binary(tx):
+    tx = dict(tx)
+    out = tx['version']
+    out += to_hex(tx['incount'].to_bytes(1, 'big'))
+    for inx in tx['inputs']:
+        for s in inx:
+            out += s
+    out += to_hex(tx['outcount'].to_bytes(1, 'big'))
+    for oux in tx['outputs']:
+        for s in oux:
+            out += s
+    out += tx['locktime']
+    return to_bytes(out)
 if __name__ == "__main__":
-    sk, vk = generate_keys()
-    mp = [make_coinbase_tx(vk.to_string().hex(), 5000, 0, "Hello World!")]
-    mp.append(make_tx([mp[0]], [0], [to_hex(sk.sign(to_bytes(mp[0])))], [random.randint(0, 10000) for i in range(10)], [vk.to_string().hex() for i in range(10)]))
-    for i in range(2251):
-        mp.append(make_tx([mp[i-1]], [0], [to_hex(sk.sign(to_bytes(mp[i-1])))], [random.randint(0, 10000) for i in range(10)], [vk.to_string().hex() for i in range(10)]))
-
-    m = hashlib.sha256()
-    m.update(to_bytes(random.choice(mp)))
-    t = m.hexdigest()
-    print(generate_header(mp, m.hexdigest(), "000000000000000000050f7b0000000000000000000000000000000000000000", 0))
-    for i in range(2251):
-        m = hashlib.sha256()
-        m.update(to_bytes(mp[i]))
-        if m.hexdigest() == t:
-            print(f"Found! TxID #{i}: \033[34m{m.hexdigest()}\033[0m")
-
-    print("Writing to file..")
-    with open("block.bin", "wb") as file:
-        file.write(to_bytes("".join(mp)))
-
-
+    pass
