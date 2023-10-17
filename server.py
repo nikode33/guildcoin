@@ -1,6 +1,6 @@
 try:
     from simplecoin import *
-    import redis, hashlib, threading, socket, json, sys, platform
+    import redis, hashlib, threading, socket, json, sys, platform, os
 except ModuleNotFoundError as e:
     module = str(e).split("'")[1]
     if module != "redis" and module != "simplecoin":
@@ -15,11 +15,12 @@ except ModuleNotFoundError as e:
 r = redis.Redis()
 pool = []
 rates = {}
+hashrate = 0
 keys = [generate_keys() for i in range(20)]
 ctid = make_coinbase_tx(keys[0][1].to_string().hex(), 50000, 0, "Hello World!")
 r.mset({hashlib.sha256(to_bytes(ctid)).hexdigest(): str(get_tx_info(ctid))})
-print("\033[33m[DEBUG] Private Key: \033[0m " + keys[0][0].to_string().hex())
-print("\033[33m[DEBUG] Coinbase TxID: \033[0m " + hashlib.sha256(to_bytes(ctid)).hexdigest())
+print("\033[33m[DEBUG]\033[0m " + keys[0][0].to_string().hex())
+print("\033[33m[DEBUG]\033[0m " + hashlib.sha256(to_bytes(ctid)).hexdigest())
 utx0 = []
 with open('assets/utx0.json', 'r') as f:
     utx0 = json.load(f)['utx0']
@@ -43,6 +44,22 @@ def flushutx0():
 
 flushutx0()
 addutx0(hashlib.sha256(to_bytes(ctid)).hexdigest(), "00")
+
+def mine(nonce, target):
+    fpb = {}
+    for k in pool:
+        fpb[k[0]] = (k[1])/(len(to_hex(k[0]))/2)
+
+    block = b''.join(sorted(fpb, key=lambda x:x[1]))
+    while 1:
+        s = time.time()
+        test_hash = hashlib.sha256(to_bytes(generate_header(block, to_hex((0).to_bytes(32, 'big')), to_hex(target.to_bytes(32, 'big')), nonce))).hexdigest()
+        hashrate = 1/(time.time() - s)
+        if int(test_hash, 16) < target:
+            print('\033[36;1m[INFO]\033[0m Mined block. \033[33;1mBlock reward: 15,000 GDC\033[0m Hash: {test_hash}')
+            break
+        nonce += 1
+
 def handle_client(client_socket, addr):
     try:
         response = ""
@@ -103,7 +120,7 @@ def handle_client(client_socket, addr):
                         removeutx0(input_txs[i], to_hex(i.to_bytes(1, 'big')))
                 if "Accepted transaction." in response:
                     r.mset({hashlib.sha256(request[8:]).hexdigest(): str(tx_info)})
-                    pool.append(tx_info)
+                    pool.append([bytes(json_to_binary(tx_info)), svalue-ovalue])
             except Exception as error:
                 response = f"Error 2: Invaild formatting. {error}"
 
@@ -156,6 +173,7 @@ def run_server():
         server.listen()
         print(f"\033[36m[INFO]\033[0m Listening on {server_ip}:{port}")
         tm = time.time()
+        poolsize = 0
         while True:
             client_socket, addr = server.accept()
 
@@ -163,14 +181,16 @@ def run_server():
                 for key in rates.keys():
                     rates[key] = 0
                 tm = time.time()
+                print(f"\033[36;1m[INFO]\033[0m Rate limits have been reset. Check-in: ")
+                print(f"\033[36;1m[INFO]\033[0m Database size: {os.path.getsize('dump.rdb')/1000000}MB    Pool size: {poolsize/2000}KB")
+                print(f"\033[36;1m[INFO]\033[0m Hashrate: {hashrate/1000}KH/s")
                 time.sleep(2)
-                print("\033[36;1m[INFO]\033[0m Rate limits have been reset.")
 
             if not (addr[0] in rates.keys()):
                 rates[addr[0]] = 1
                 thread = threading.Thread(target=handle_client, args=(client_socket, addr,))
                 thread.start()
-            elif rates[addr[0]] < 100:
+            elif rates[addr[0]] < 250:
                 print(f"\033[32m[SERVER]\033[0m Accepted connection from {addr[0]}:{addr[1]}")
                 rates[addr[0]] += 1
                 thread = threading.Thread(target=handle_client, args=(client_socket, addr,))
@@ -180,11 +200,23 @@ def run_server():
                 client_socket.close()
                 rates[addr[0]] += 1
                 print(f"\033[32m[SERVER]\033[0m {addr[0]} is overpinging. They have sent {rates[addr[0]]} requests in the last minute.")
+
+            poolsize = 0
+            fblock = b''
+            for k in pool:
+                poolsize += len(to_hex(k[0]))
+
+            if len(pool) > 200 or poolsize > 900000:
+                for i in range(50):
+                    thread = threading.Thread(target=mine, args=(random.randint(0, 2**31), 256000000000000000000000000000000000000000000000000000000000000000000000, ))
+                    thread.start()
+                    thread.join()
+                
     except KeyboardInterrupt:
         print('\n\n')
         print("\033[36m[INFO]\033[0m Received Ctrl-C. Stopping TCP server...")
         time.sleep(2) # No, this isn't useless! It's to provide a delay for the ports to shut down, just in case.
-    except Exception as e:
+    except KeyError:
         print(f"\033[31m[ERROR]\033[0m Error: {e}. Passed.")
     finally:
         server.close()

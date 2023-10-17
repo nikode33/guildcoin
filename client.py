@@ -9,8 +9,8 @@ for i in range(2000):
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
-    txid = "42e1a6f83e764d3fd350a79a90932bf949b0dab0af61ed832d9c49a0eb33be0b"
-    ssk = "7982e43a1789afb174a0021d979576c1851ba29af239f659dfc8e762385d403d"
+    txid = "2edb9ef779e0fa1b0d496addebfdbd3b6dfa588ef584ba33e36f0f1926fb9654"
+    ssk = "45a267f0968f016a01ab8561f8ff374454e7683dd6bb903e25dcadcdea10d56d"
     s.sendall(('get_raw_tx' + txid).encode('utf-8'))
     tid = s.recv(1024)
     print(tid)
